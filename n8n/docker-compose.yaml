@@ -1,0 +1,81 @@
+services:
+
+  n8n:
+    image: docker.n8n.io/n8nio/n8n
+    restart: unless-stopped
+    expose:
+      - 5678
+    environment:
+      - N8N_HOST=${N8N_HOST:-n8n.example.com}
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=https
+      - NODE_ENV=production
+      - WEBHOOK_URL=https://${N8N_HOST:-n8n.example.com}/
+      - GENERIC_TIMEZONE=Africa/Nairobi
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - ./n8n_local_files:/files
+    networks:
+      - npm_proxy # always publicly accessible
+      - internal
+
+
+  mongo:
+    image: mongo:8.2.5
+    restart: unless-stopped
+    command:
+      - --bind_ip_all
+    ulimits:
+      nofile:
+        soft: 2500
+        hard: 2500
+    expose:
+      - 27017
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:?set MONGO_ROOT_PASSWORD in .env}
+    volumes:
+      - mongo_data:/data/db
+    networks:
+      - internal   # not exposed publicly
+
+
+  mongo-express:
+    image: mongo-express
+    restart: unless-stopped
+    expose:
+      - 8081
+    environment:
+      ME_CONFIG_MONGODB_URL: mongodb://root:${MONGO_ROOT_PASSWORD}@mongo:27017/
+      ME_CONFIG_BASICAUTH: "false"
+    networks:
+      - npm_proxy # disable on NPM when not in use
+      - internal
+    depends_on:
+      - mongo
+
+
+  qdrant:
+    image: qdrant/qdrant:v1.16
+    restart: unless-stopped
+    expose:
+      - 6333   # HTTP API (internal)
+      - 6334   # gRPC API (internal)
+    volumes:
+      - qdrant_data:/qdrant/storage
+    networks:
+      - internal # not exposed publicly
+      - npm_proxy
+      
+
+
+volumes:
+  n8n_data:
+  mongo_data:
+  qdrant_data:
+
+networks:
+  npm_proxy:
+    external: true
+  internal:
+    driver: bridge
